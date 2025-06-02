@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+.env
+
+# Database
+*.db
+*.sqlite3
+
+# Logs
+*.log
+
+# Operating System Files
+.DS_Store
+Thumbs.db
+
+# Virtual Environment
+venv/
+env/

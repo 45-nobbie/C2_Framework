@@ -1,0 +1,5 @@
+# Initial dependencies for the Windows agent (Python)
+# dnspython (for DNS client functionality)
+
+# Placeholders - actual libraries will be added as we develop
+# dnspython

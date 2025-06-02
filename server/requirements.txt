@@ -4,6 +4,6 @@
 # SQLAlchemy (for ORM with SQLite - optional, can start with raw sqlite3)
 
 # Placeholders - actual libraries will be added as we develop
-# dnspython
+dnspython
 # click
 # SQLAlchemy

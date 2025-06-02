@@ -1,7 +1,6 @@
 {
     "python.analysis.extraPaths": [
         "./server/utils",
-        "./server/database",
-        "./server/modules"
+        "./server/database"
     ]
 }

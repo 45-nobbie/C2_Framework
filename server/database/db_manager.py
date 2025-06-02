@@ -161,6 +161,20 @@ class DBManager:
             finally:
                 conn.close()
         return False
+    def get_agent_by_session_id(self, session_id):
+        """Retrieves an agent by its unique session ID."""
+        conn = self._connect()
+        if conn:
+            try:
+                cursor = conn.cursor()
+                cursor.execute("SELECT * FROM agents WHERE session_id = ?", (session_id,))
+                agent = cursor.fetchone()
+                return dict(agent) if agent else None
+            except sqlite3.Error as e:
+                logger.error(f"Error getting agent by session ID {session_id}: {e}", exc_info=True)
+            finally:
+                conn.close()
+        return None
 
 # Example usage for testing DBManager directly
 if __name__ == "__main__":

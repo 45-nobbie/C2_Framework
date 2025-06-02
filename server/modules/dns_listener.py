@@ -1,9 +1,10 @@
-import dns.rdataclass
-import dns.rdatatype
-import dns.message
-import dns.rcode
-import dns.name
-import dns.query
+# import dns.rdataclass
+# import dns.rdatatype
+# import dns.message
+# import dns.rcode
+# import dns.name
+# import dns.query
+import dns
 import socket
 import threading
 import time

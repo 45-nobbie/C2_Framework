@@ -4,7 +4,8 @@
 # import dns.rcode
 # import dns.name
 # import dns.query
-import dns
+import logging
+import dns # type: ignore
 import socket
 import threading
 import time
@@ -20,7 +21,7 @@ from logger import setup_logger
 from encoder import DataEncoder
 from db_manager import DBManager
 
-logger = setup_logger('dns_listener', 'dns_listener.log')
+logger = setup_logger('dns_listener', 'logs/dns_listener.log', level=logging.DEBUG, console_output=False)
 
 class DNSListener:
     def __init__(self, c2_domain, c2_ip, db_manager: DBManager):

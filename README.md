@@ -2,56 +2,96 @@
 
 ## Project Overview
 
-This project aims to develop a sophisticated, multi-functional Command and Control (C2) framework designed for realistic red teaming simulations. Our primary focus is on developing stealthy communication methods and robust agent functionalities, starting with Windows targets.
+This project is a multi-functional Command and Control (C2) framework for red teaming simulations. It focuses on stealthy communication (DNS tunneling, HTTP) and robust agent/server functionality, starting with Windows agents.
 
-This framework is for educational and research purposes only, intended to deepen understanding of offensive security techniques, network communication, and defensive countermeasures. **It must only be used in controlled, authorized environments.**
+**For educational and research purposes only. Use only in authorized, controlled environments.**
 
-## Features (Planned)
+## Features
 
-* **Server Interface:** Command-Line Interface (CLI)
-* **Initial Agent Target:** Windows
-* **Initial Communication:** DNS Tunneling
-* **Core Agent Functionalities:**
-    * Execute shell commands
-    * Upload/Download files
-    * List directories
-    * Gather basic system information
-    * (Future) Process manipulation, screenshot, keylogging, persistence, etc.
+- **Server Interface:** Command-Line Interface (CLI)
+- **Agent Target:** Windows (Python)
+- **Communication:** DNS tunneling (in progress), HTTP (implemented)
+- **Agent Functionalities:**
+    - Execute shell commands
+    - Upload/Download files (planned)
+    - List directories (planned)
+    - Gather system information (planned)
+    - (Future) Process manipulation, screenshot, keylogging, persistence, etc.
+
+## Folder Structure
+
+```
+C2_Framework/
+├── server/
+│   ├── c2_server.py           # Main server CLI
+│   ├── core/                  # Core logic (agent/task management, comms interface)
+│   ├── modules/
+│   │   ├── dns_listener.py    # DNS C2 server module (in progress)
+│   │   └── http_listener.py   # HTTP C2 server module (working)
+│   ├── database/
+│   │   └── db_manager.py      # SQLite DB manager
+│   ├── utils/                 # Logging, encoding, helpers
+│   └── requirements.txt
+├── agent/
+│   └── windows/
+│       ├── agent.py           # Main agent logic (HTTP beaconing)
+│       ├── comms/             # DNS client (planned)
+│       ├── implant/           # Command execution, system info, file ops (planned)
+│       └── persistence/       # (future)
+├── docs/                      # Architecture, protocol, setup, usage
+├── tests/                     # (empty, to be filled)
+└── README.md
+```
 
 ## Architecture
 
-* **C2 Server:** Developed in Python, managing agents, tasks, and handling incoming communications.
-* **C2 Agents:** Initially developed in Python for Windows, designed to be lightweight and stealthy.
-* **Communication:** Agent-to-Server communication initially utilizes DNS tunneling for covert data exfiltration and command ingress.
+- **C2 Server:** Python, manages agents/tasks, handles incoming comms (HTTP/DNS).
+- **C2 Agent:** Python for Windows, lightweight, beacons to server, executes tasks.
+- **Communication:** HTTP (working), DNS tunneling (in progress).
+
+See [`docs/architecture.md`](docs/architecture.md) for a detailed diagram and breakdown.
 
 ## Setup & Installation
 
-**(To be filled in detail later in `docs/setup_guide.md`)**
+See [`docs/setup_guide.md`](docs/setup_guide.md) for full instructions.
 
-### Prerequisites:
-* Python 3.x
-* A registered domain name (for DNS tunneling)
-* A publicly accessible server/VPS for the C2 server
+**Quick Start (HTTP mode):**
+1. Install Python 3.x and dependencies:
+    ```
+    pip install -r server/requirements.txt
+    ```
+2. Start the server:
+    ```
+    python server/c2_server.py
+    ```
+3. Start the agent (on Windows target):
+    ```
+    python agent/windows/agent.py
+    ```
 
 ## Usage
 
-**(To be filled in detail later in `docs/usage_guide.md`)**
+- Use the CLI (`python server/c2_server.py`) to list agents, interact, and send commands.
+- Agents beacon to the server and execute received tasks.
+- See [`docs/usage_guide.md`](docs/usage_guide.md) for details.
 
 ## Development Status
 
-* **Phase 1: Foundational C2 (Minimal Viable Product with DNS Tunneling)**
-    * Milestone 1.1: Core C2 Server (Python CLI) - **In Progress**
-    * Milestone 1.2: DNS Tunneling Module for Server
-    * Milestone 1.3: Basic Windows Agent (Python)
-    * Milestone 1.4: Command & Control Flow
+- **Phase 1: Foundational C2**
+    - [x] Core C2 Server CLI
+    - [x] HTTP Listener (agent/server)
+    - [ ] DNS Tunneling Module (in progress)
+    - [x] Basic Windows Agent (HTTP)
+    - [x] Command & Control Flow (HTTP)
+    - [ ] File operations, persistence, advanced features
 
 ## Contributing
 
-**(Guidelines for potential future contributions, if any)**
+Contributions are welcome! See guidelines in this file or contact the maintainers.
 
 ## License
 
-This project is licensed under the [LICENSE Name] - see the `LICENSE` file for details.
+This project is licensed under the [LICENSE](LICENSE) file.
 
 ## Disclaimer
 

